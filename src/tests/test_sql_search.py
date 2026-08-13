@@ -29,26 +29,49 @@ def test_search_sql_skips_default_dirs(tmp_path: Path) -> None:
 def test_deepsearch_matches_embedded_sql_case_insensitively(tmp_path: Path) -> None:
     _write(tmp_path / "a.sql", "SELECT 1;")
     _write(tmp_path / "app.py", "query = 'select * from users'")
-    assert deepsearchsql(tmp_path) == [tmp_path / "a.sql", tmp_path / "app.py"]
+    assert deepsearchsql(tmp_path) == {".": ["a.sql", "app.py"]}
 
 
 def test_deepsearch_word_boundaries_do_not_match(tmp_path: Path) -> None:
     _write(tmp_path / "notes.txt", "The selection committee meets today.")
-    assert deepsearchsql(tmp_path) == []
+    assert deepsearchsql(tmp_path) == {}
 
 
 def test_deepsearch_skips_binary_files(tmp_path: Path) -> None:
     _write(tmp_path / "a.sql", "SELECT 1;")
     (tmp_path / "img.bin").write_bytes(b"\x00\xff\xfeSELECT")
-    assert deepsearchsql(tmp_path) == [tmp_path / "a.sql"]
+    assert deepsearchsql(tmp_path) == {".": ["a.sql"]}
 
 
 def test_deepsearch_ignores_env_dir(tmp_path: Path) -> None:
     _write(tmp_path / "a.sql", "SELECT 1;")
     _write(tmp_path / "env" / "pkg.py", "SELECT 1")
-    assert deepsearchsql(tmp_path) == [tmp_path / "a.sql"]
+    assert deepsearchsql(tmp_path) == {".": ["a.sql"]}
 
 
 def test_empty_dir_returns_empty(tmp_path: Path) -> None:
     assert search_sql(tmp_path) == []
-    assert deepsearchsql(tmp_path) == []
+    assert deepsearchsql(tmp_path) == {}
+
+
+def test_deepsearch_groups_by_directory(tmp_path: Path) -> None:
+    _write(tmp_path / "root.sql", "SELECT 1;")
+    _write(tmp_path / "a" / "one.sql", "SELECT 2;")
+    _write(tmp_path / "b" / "c" / "two.sql", "SELECT 3;")
+    _write(tmp_path / "b" / "c" / "queries.py", "sql = 'INSERT INTO t'")
+    assert deepsearchsql(tmp_path) == {
+        ".": ["root.sql"],
+        "a": ["one.sql"],
+        "b/c": ["queries.py", "two.sql"],
+    }
+
+
+def test_deepsearch_includes_unreadable_sql_files(tmp_path: Path) -> None:
+    _write(tmp_path / "a.sql", "SELECT 1;")
+    (tmp_path / "bin.sql").write_bytes(b"\x00\xff\xfe")
+    assert deepsearchsql(tmp_path) == {".": ["a.sql", "bin.sql"]}
+
+
+def test_deepsearch_skips_file_named_like_skip_dir(tmp_path: Path) -> None:
+    _write(tmp_path / "env", "SELECT 1")
+    assert deepsearchsql(tmp_path) == {}
