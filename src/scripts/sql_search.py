@@ -14,7 +14,7 @@ SQL_STATEMENT_KEYWORDS: Final[tuple[str, ...]] = (
     "ALTER",
     "DROP",
     "TRUNCATE",
-    "JOIN",
+    "JOIN","Supabase"
 )
 
 SQL_KEYWORD_PATTERN: Final[re.Pattern[str]] = re.compile(
@@ -27,14 +27,6 @@ DEFAULT_SKIP_DIRS: Final[frozenset[str]] = frozenset(
 
 
 
-def search_sql(root: Path) -> list[Path]:
-    """Return every .sql file under root, recursively."""
-    return [
-        file
-        for file in root.rglob("*.sql")
-        if file.is_file()
-        and not any(part in DEFAULT_SKIP_DIRS for part in file.relative_to(root).parts)
-    ]
 
 
 
