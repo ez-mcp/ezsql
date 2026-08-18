@@ -28,6 +28,21 @@ _CLAMP_RANGES: dict[str, tuple[int, int]] = {
     "max_files_per_scan": (100, 500_000),
     "max_total_bytes": (1024, 4 * 1024 * 1024 * 1024),
     "max_scan_depth": (1, 100),
+    # Phase 2 limits (plan §11)
+    "max_sql_input_bytes": (1024, 100 * 1024 * 1024),
+    "max_sec_files": (1, 10_000),
+    "max_total_file_bytes": (1024, 4 * 1024 * 1024 * 1024),
+    "max_statements": (1, 100_000),
+    "max_findings": (10, 10_000),
+    "max_candidates": (1, 1_000),
+    "max_parser_warnings": (10, 1_000),
+    "max_parse_errors": (1, 1_000),
+    "max_analysis_tables": (10, 10_000),
+    "max_analysis_columns": (10, 50_000),
+    "max_analysis_joins": (1, 5_000),
+    "max_analysis_predicates": (1, 10_000),
+    "max_message_length": (100, 10_000),
+    "max_snippet_length": (50, 5_000),
 }
 
 
@@ -65,6 +80,24 @@ class EzsqlConfig(BaseModel):
     max_total_bytes: int = 256 * 1024 * 1024  # 256 MiB
     max_scan_depth: int = 20
 
+    # Phase 2: SQL input limits (plan §11)
+    max_sql_input_bytes: int = 4_194_304  # 4 MiB
+    max_sec_files: int = 200
+    max_total_file_bytes: int = 32 * 1024 * 1024  # 32 MiB
+    max_statements: int = 10_000
+
+    # Phase 2: Output bounding (plan §11.4)
+    max_findings: int = 1_000
+    max_candidates: int = 50
+    max_parser_warnings: int = 100
+    max_parse_errors: int = 100
+    max_analysis_tables: int = 500
+    max_analysis_columns: int = 5_000
+    max_analysis_joins: int = 200
+    max_analysis_predicates: int = 1_000
+    max_message_length: int = 2_048
+    max_snippet_length: int = 512
+
     def get_database_url(self) -> str | None:
         """Resolve database URL from the configured environment variable.
 
@@ -80,7 +113,13 @@ class EzsqlConfig(BaseModel):
 
     @field_validator("cache_max_size_mb", "cache_max_entries", "task_ttl_seconds",
                      "max_file_size", "max_files_per_scan", "max_total_bytes",
-                     "max_scan_depth")
+                     "max_scan_depth",
+                     "max_sql_input_bytes", "max_sec_files", "max_total_file_bytes",
+                     "max_statements", "max_findings", "max_candidates",
+                     "max_parser_warnings", "max_parse_errors",
+                     "max_analysis_tables", "max_analysis_columns",
+                     "max_analysis_joins", "max_analysis_predicates",
+                     "max_message_length", "max_snippet_length")
     @classmethod
     def _clamp_numeric(cls, v: int, info: Any) -> int:
         """Clamp numeric fields to valid ranges (T4.3)."""
