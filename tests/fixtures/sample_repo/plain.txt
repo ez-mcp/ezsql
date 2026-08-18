@@ -1,0 +1,2 @@
+This is a plain text file with no SQL keywords.
+It should not appear in the find_context results.
