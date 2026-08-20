@@ -1,0 +1,49 @@
+# EZSQL configuration example — Phase 3 (live PostgreSQL planner evidence)
+#
+# Place at <project-root>/.ezsql/config.toml. Missing file → all defaults.
+# Unknown keys are REJECTED (the whole config falls back to defaults) —
+# misspellings are reported in logs, never silently ignored.
+#
+# This is a Phase 3 excerpt, not an exhaustive list of every setting.
+
+[ezsql]
+# Root resolution fallback (the `root` tool parameter is primary).
+# project_root = "/absolute/path/to/project"
+
+# Dialect for static analysis (default "postgres").
+default_dialect = "postgres"
+
+# Name of the env var holding the PostgreSQL URI (never the value itself).
+# The URI must be postgres:// or postgresql:// with explicit host,
+# database, and role. TCP requires sslmode=require|verify-ca|verify-full.
+# Example value (set in your environment, not here):
+#   postgres://ezsql_ro:***@db.example.com:5432/appdb?sslmode=verify-full
+database_url_env = "DATABASE_URL"
+
+# --- Live evidence limits (defaults shown; clamped to valid ranges) ---
+# max_explain_sql_bytes = 262144        # 256 KiB
+# max_plan_response_bytes = 2097152     # 2 MiB
+# max_plan_nodes = 500
+# max_plan_depth = 64
+# max_plan_condition_chars = 1024
+# max_explain_candidates = 5
+
+# --- Adapter lifecycle (defaults shown) ---
+# db_pool_min_size = 1
+# db_pool_max_size = 5
+# max_database_adapters = 4
+# db_connect_timeout_seconds = 10
+# db_acquire_timeout_seconds = 5
+# explain_ttl_seconds = 3600
+# explain_statement_timeout_seconds = 30
+# explain_lock_timeout_seconds = 5
+# explain_total_timeout_seconds = 45
+# runtime_enrichment_timeout_seconds = 90
+
+# --- Database role requirements (deployment responsibility) ---
+# The configured role MUST be least-privileged:
+#   - CONNECT on the database, USAGE on schemas, SELECT on relations
+#   - NO SUPERUSER / BYPASSRLS / CREATEROLE / CREATEDB
+#   - NO TEMP, NO CREATE on database or schemas
+#   - NO INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER on any relation
+# EZSQL preflights and rejects privileged roles at connect time.

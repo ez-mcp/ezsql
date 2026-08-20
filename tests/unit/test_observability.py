@@ -89,3 +89,44 @@ def test_configure_logging_idempotent() -> None:
     # No error means success
     log = get_logger("test")
     assert log is not None
+
+
+# --- Phase 3 tests (plan_phase3 §9, §11) ---
+
+
+def test_domain_counter_ownership() -> None:
+    """Wrappers own tool_calls; pipelines own domain counters (§11).
+
+    The static optimize pipeline must NOT increment tool_calls — the
+    duplicate increment was removed in Phase 3 (V3-5).
+    """
+    counters.reset()
+    from ezsql.config import EzsqlConfig
+    from ezsql.pipelines.optimize import run_optimize_query
+
+    run_optimize_query("SELECT 1", EzsqlConfig(), dialect="postgres")
+    assert counters.get("tool_calls") == 0  # pipeline never increments it
+    counters.reset()
+
+
+def test_phase3_domain_counters_exist() -> None:
+    """Phase 3 domain counters are usable in the registry (§11)."""
+    counters.reset()
+    for name in ("explain_requests", "explain_successes", "explain_failures",
+                 "explain_cache_hits", "explain_cache_misses",
+                 "runtime_candidates_attempted", "runtime_candidates_verified",
+                 "statement_gate_blocks", "db_connection_failures",
+                 "db_acquire_timeouts", "explain_timeouts",
+                 "plan_parse_failures"):
+        counters.inc(name, 1)
+    snap = counters.snapshot()
+    for name in snap:
+        assert snap[name] == 1
+    counters.reset()
+
+
+def test_counter_zero_default_projection() -> None:
+    """Unset counters project to zero (§11)."""
+    reg = CounterRegistry()
+    assert reg.get("explain_requests") == 0
+    assert reg.snapshot() == {}

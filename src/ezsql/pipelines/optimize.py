@@ -48,7 +48,8 @@ def run_optimize_query(
     Returns:
         ``OptimizeResult`` on success, or ``FailureEnvelope`` on failure.
     """
-    counters.inc("tool_calls", 1)
+    # Note: tool invocation counters are owned by the server wrappers
+    # (plan_phase3 §11); the pipeline owns domain events only.
 
     # Input size check (plan §11.1)
     if len(sql.encode("utf-8")) > config.max_sql_input_bytes:

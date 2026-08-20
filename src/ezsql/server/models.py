@@ -11,7 +11,7 @@ Phase 2 updates (plan §9):
 - ``SchemaModel`` is now imported from ``core/schema/model.py`` (canonical).
 """
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,13 @@ from ezsql.core.schema.model import (
 )
 from ezsql.core.schema.model import (
     SourceSpan as SchemaSourceSpan,
+)
+from ezsql.core.sql.plan import (
+    ParsedPlan,
+    PlanCondition,
+    PlanDelta,
+    PlanNode,
+    PlanSummary,
 )
 
 # File classification type (plan §5.8 — confirmed §17 Q4).
@@ -136,28 +143,30 @@ class SecurityScanResult(BaseModel):
 class RewriteCandidate(BaseModel):
     """A rewrite candidate with forward-compatible metadata (plan §9.4).
 
-    ``plan_delta`` is **always ``None``** in Phase 2. No estimated cost
-    changes. No "approximate" performance claims.
+    ``plan_delta`` is a typed ``PlanDelta`` (Phase 3) or ``None`` when no
+    live planner evidence exists. No "approximate" performance claims.
     """
 
     original_hash: str
     rewritten_sql: str
     transformations: list[str] = Field(default_factory=list)
     evidence: Literal["static", "schema", "runtime"] = "static"
-    plan_delta: dict[str, Any] | None = None
+    plan_delta: PlanDelta | None = None
     source_span: SourceSpan | None = None
     preconditions: list[str] = Field(default_factory=list)
     schema_dependency: str | None = None
     dialect: str = "unknown"
     validation_status: Literal["validated", "withheld", "failed"] = "validated"
     security_status: Literal["unchecked", "passed", "withheld"] = "unchecked"
+    runtime_failure: str | None = None
 
 
 class OptimizeResult(BaseModel):
     """Optimization analysis result (plan §9, §16).
 
     Findings are ordered by source location (statement_index, line, col).
-    ``plan_delta`` on candidates is always ``None`` in Phase 2.
+    Phase 3 adds ``runtime_evidence_status``: live planner evidence
+    annotates Phase 2 output; it never decides semantic correctness.
     """
 
     dialect: str = "unknown"
@@ -169,6 +178,10 @@ class OptimizeResult(BaseModel):
     candidates_truncated: bool = False
     candidates_suppressed: int = 0
     cache_provenance: CacheProvenance = Field(default_factory=CacheProvenance)
+    runtime_evidence_status: Literal[
+        "unavailable", "available", "partial", "failed"
+    ] = "unavailable"
+    runtime_evidence_detail: str | None = None
 
 
 class SqlAnalysis(BaseModel):
@@ -208,11 +221,24 @@ class SqlAnalysis(BaseModel):
     cache_provenance: CacheProvenance = Field(default_factory=CacheProvenance)
 
 
-class Plan(BaseModel):
-    """Normalized query execution plan."""
+class ExplainResult(BaseModel):
+    """Result of explain_query (plan_phase3 §1).
 
-    dialect: str = "postgres"
-    root: dict[str, Any] = Field(default_factory=dict)
+    ``plan`` is the bounded normalized plan tree; ``summary`` is the compact
+    projection. ``limitations`` states explicitly that costs are planner
+    estimates, not measured execution time.
+    """
+
+    dialect: Literal["postgres"] = "postgres"
+    sql_fingerprint: str = ""
+    summary: PlanSummary = Field(default_factory=lambda: PlanSummary(root_op="Unknown"))
+    plan: ParsedPlan
+    cache_provenance: CacheProvenance = Field(default_factory=CacheProvenance)
+    limitations: list[str] = Field(default_factory=lambda: [
+        "Costs and row counts are PostgreSQL planner estimates, not measured execution.",
+        "Planning time is not execution time.",
+        "Generic plans (parameterized queries) may differ from value-specific plans.",
+    ])
 
 
 class ContextMap(BaseModel):
@@ -261,7 +287,12 @@ __all__ = [
     "IndexDef",
     "OptimizeResult",
     "ParserWarning",
-    "Plan",
+    "ParsedPlan",
+    "PlanCondition",
+    "PlanDelta",
+    "PlanNode",
+    "PlanSummary",
+    "ExplainResult",
     "RewriteCandidate",
     "RuleCoverage",
     "ScanMetadata",

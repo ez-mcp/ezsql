@@ -150,15 +150,27 @@ def test_rewrite_candidate_evidence_accepts_runtime() -> None:
     assert c.evidence == "runtime"
 
 
-def test_rewrite_candidate_plan_delta_can_be_dict() -> None:
-    """RewriteCandidate.plan_delta can go from None to dict for Phase 3."""
+def test_rewrite_candidate_plan_delta_is_typed() -> None:
+    """RewriteCandidate.plan_delta is a typed PlanDelta (Phase 3, plan_phase3 §9).
+
+    The old forward-compatibility assertion (arbitrary dict) is removed:
+    plan_phase3 §9 explicitly replaces it with typed round trips.
+    """
+    from ezsql.core.sql.plan import PlanDelta
+
     c = RewriteCandidate(
         original_hash="abc",
         rewritten_sql="SELECT 1",
-        plan_delta={"cost_before": 100, "cost_after": 50},
+        plan_delta=PlanDelta(
+            original_total_cost=100.0,
+            candidate_total_cost=50.0,
+            cost_delta=-50.0,
+            cost_delta_pct=-50.0,
+        ),
     )
     assert c.plan_delta is not None
-    assert c.plan_delta["cost_before"] == 100
+    assert c.plan_delta.original_total_cost == 100.0
+    assert c.plan_delta.cost_delta == -50.0
 
 
 def test_schema_model_source_accepts_introspection() -> None:

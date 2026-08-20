@@ -38,7 +38,11 @@ def test_no_llm_in_security() -> None:
 
 
 def test_no_db_in_phase2() -> None:
-    """No Phase 2 pipeline imports ezsql.db (plan §22.6)."""
+    """Static pipelines do not import ezsql.db (plan_phase3 §9).
+
+    The Phase 3 runtime pipelines (explain, optimize_runtime) are allowed
+    DB access; the static ones are not.
+    """
     for pipeline_name in ("analyze", "security", "optimize", "context"):
         mod = sys.modules.get(f"ezsql.pipelines.{pipeline_name}")
         if mod is None:
@@ -70,14 +74,57 @@ def test_acyclic_imports_core_no_pipelines() -> None:
         assert "ezsql.pipelines" not in source, f"{mod_name} imports ezsql.pipelines"
 
 
-def test_tool_count_is_4() -> None:
-    """Exactly 4 tools registered (plan §22.6 — find_context + 3 new)."""
-    from ezsql.server.tools import register_tools
+def test_tool_count_is_5() -> None:
+    """Exactly 5 workflow tools registered via list_tools() (plan_phase3 §9)."""
+    import asyncio
 
-    # We can't easily count registered tools without a mock MCPServer,
-    # but we can check that register_tools exists and doesn't crash.
-    # A more thorough test would mock MCPServer and count @mcp.tool calls.
-    assert callable(register_tools)
+    from ezsql.server.app import create_server
+
+    async def _list_tools() -> list[str]:
+        server = create_server()
+        tools = await server.list_tools()
+        return sorted(t.name for t in tools)
+
+    tool_names = asyncio.run(_list_tools())
+    assert tool_names == [
+        "analyze_sql",
+        "explain_query",
+        "find_context",
+        "optimize_query",
+        "sql_sec",
+    ]
+
+
+def test_prompt_count_is_3() -> None:
+    """Exactly 3 prompts registered via list_prompts() (plan_phase3 §9)."""
+    import asyncio
+
+    from ezsql.server.app import create_server
+
+    async def _list_prompts() -> list[str]:
+        server = create_server()
+        prompts = await server.list_prompts()
+        return sorted(p.name for p in prompts)
+
+    prompt_names = asyncio.run(_list_prompts())
+    assert prompt_names == [
+        "explain_guide",
+        "sql_optimization_guide",
+        "sql_security_guide",
+    ]
+
+
+def test_db_never_imports_server_or_pipelines() -> None:
+    """db/ modules never import server/ or pipelines/ (plan_phase3 §2, V3-6)."""
+    for mod_name in ("ezsql.db.base", "ezsql.db.errors",
+                     "ezsql.db.postgres", "ezsql.db.lifecycle"):
+        mod = sys.modules.get(mod_name)
+        if mod is None:
+            mod = importlib.import_module(mod_name)
+        with open(mod.__file__) as f:  # type: ignore[union-attr]
+            source = f.read()
+        assert "ezsql.server" not in source, f"{mod_name} imports ezsql.server"
+        assert "ezsql.pipelines" not in source, f"{mod_name} imports ezsql.pipelines"
 
 
 def test_schema_lossiness_invariant() -> None:

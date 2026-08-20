@@ -16,11 +16,13 @@ from typing import Any
 
 from ezsql.core.schema.ddl import SCHEMA_MODEL_VERSION
 from ezsql.core.security.rules import SECURITY_RULESET_VERSION
+from ezsql.core.sql.plan import EXPLAIN_OPTIONS_FINGERPRINT, PLAN_MODEL_VERSION
 
 # Version tags embedded in keys so upgrades invalidate cleanly (plan §14, §22).
 _LINT_RULESET_VERSION = "1"  # OPT-001 through OPT-004
 _OPTIMIZATION_RULESET_VERSION = "1"  # Optimization heuristics
 _REWRITE_RULESET_VERSION = "1"  # Rewrite rules (SELECT * expansion)
+_RUNTIME_EVIDENCE_VERSION = "1"  # Phase 3 runtime evidence record shape
 
 
 def _get_sqlglot_version() -> str:
@@ -182,9 +184,70 @@ def schema_key(
     return _hash(parts)
 
 
+def explain_key(
+    canonical_sql: str,
+    db_identity_fingerprint: str,
+    repo_ddl_fingerprint: str,
+    server_major_version: int | None,
+) -> str:
+    """Build the TTL-bound cache key for a normalized EXPLAIN plan.
+
+    Inputs (plan_phase3 §6): canonical SQL hash, PostgreSQL dialect,
+    non-secret DB identity fingerprint, repository-DDL fingerprint,
+    EXPLAIN option/version fingerprint, plan-model version, sqlglot
+    version, and the effective PostgreSQL server major version.
+    """
+    parts: dict[str, Any] = {
+        "domain": "explain",
+        "sql_hash": _hash_sql(canonical_sql),
+        "dialect": "postgres",
+        "db_identity": db_identity_fingerprint,
+        "repo_ddl": repo_ddl_fingerprint,
+        "explain_options": EXPLAIN_OPTIONS_FINGERPRINT,
+        "plan_model_version": PLAN_MODEL_VERSION,
+        "server_major": server_major_version if server_major_version is not None else "",
+        "sqlglot_version": _get_sqlglot_version(),
+    }
+    return _hash(parts)
+
+
+def runtime_evidence_key(
+    static_key: str,
+    db_identity_fingerprint: str,
+    repo_ddl_fingerprint: str,
+    candidate_identities: Sequence[str],
+    config_limits: Sequence[tuple[str, int]],
+    server_major_version: int | None,
+) -> str:
+    """Build the TTL-bound cache key for runtime optimization evidence.
+
+    Includes the static optimize key, DB identity, repository-DDL
+    fingerprint, a hash of the **exact ordered eligible candidate
+    identities**, every result-shaping limit, the EXPLAIN option
+    fingerprint, the effective server major version, and the
+    runtime-evidence schema version. Evidence can never be applied to a
+    different candidate set (plan_phase3 §6).
+    """
+    parts: dict[str, Any] = {
+        "domain": "runtime_evidence",
+        "static_key": static_key,
+        "db_identity": db_identity_fingerprint,
+        "repo_ddl": repo_ddl_fingerprint,
+        "candidates": "|".join(candidate_identities),
+        "limits": "|".join(f"{k}={v}" for k, v in config_limits),
+        "explain_options": EXPLAIN_OPTIONS_FINGERPRINT,
+        "server_major": server_major_version if server_major_version is not None else "",
+        "runtime_evidence_version": _RUNTIME_EVIDENCE_VERSION,
+        "sqlglot_version": _get_sqlglot_version(),
+    }
+    return _hash(parts)
+
+
 __all__ = [
     "analysis_key",
+    "explain_key",
     "optimize_key",
+    "runtime_evidence_key",
     "scan_key",
     "schema_key",
     "security_key",
