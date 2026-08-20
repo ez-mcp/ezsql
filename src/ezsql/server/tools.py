@@ -1,9 +1,8 @@
 """MCP tool registrations for EZSQL.
 
-Phase 3 registers 5 tools: ``find_context``, ``analyze_sql``, ``sql_sec``,
-``optimize_query``, ``explain_query``. The remaining 3 tools are stub
-modules (kept for architectural visibility) but NOT registered until
-their phases.
+Phase 4 registers all 8 tools: ``find_context``, ``analyze_sql``,
+``sql_sec``, ``optimize_query``, ``explain_query``, ``design_schema``,
+``refactor_sql``, ``debug_sql``.
 
 Per-call config loading (Gap 1 fix): the config passed to ``register_tools``
 is used only for root resolution's ``project_root`` fallback. Once a root is
@@ -20,8 +19,11 @@ from ezsql.config import EzsqlConfig, load_config
 from ezsql.observability import counters, logger
 from ezsql.pipelines.analyze import run_analyze_sql
 from ezsql.pipelines.context import run_find_context
+from ezsql.pipelines.debug import run_debug_sql
+from ezsql.pipelines.design import run_design_schema
 from ezsql.pipelines.explain import run_explain_query
 from ezsql.pipelines.optimize_runtime import run_optimize_query_with_runtime
+from ezsql.pipelines.refactor import run_refactor_sql
 from ezsql.pipelines.security import run_sql_sec
 from ezsql.server.cache_lifecycle import get_cache
 from ezsql.server.models import FailureEnvelope
@@ -79,6 +81,41 @@ _EXPLAIN_QUERY_DESCRIPTION = (
     "prefix, writes, commands, and locking clauses are rejected). Costs "
     "are planner estimates, not measured execution time. Use for plan, "
     "cost, scan, join, index usage, or query performance questions."
+)
+
+_DESIGN_SCHEMA_DESCRIPTION = (
+    "Design a database schema from natural-language requirements: proposed "
+    "tables, columns, types, primary/foreign keys, generated CREATE TABLE "
+    "DDL, migration strategy, risks, and a Mermaid ERD. Deterministic "
+    "derivation first; when it is inconclusive AND an LLM API key is "
+    "configured, an advisory is attached (advisory-only, never a verdict). "
+    "Generated DDL is validated against the security rule engine before "
+    "being returned. Use for schema design, new tables, data modeling, "
+    "entity relationships, or CREATE TABLE work. Pass 'requirements' with "
+    "a description of the entities and relationships you need."
+)
+
+_REFACTOR_SQL_DESCRIPTION = (
+    "Comprehensive refactoring report for a SQL target in one pass: "
+    "security findings, optimization findings and rewrite candidates, and "
+    "schema impact (missing tables/columns vs the repo schema), plus "
+    "proposed changes the agent applies. Composes the sql_sec and "
+    "optimize_query analyses internally — deterministic only. Use for "
+    "query refactoring, code review of SQL, holistic improvement, or "
+    "before applying changes to a query or .sql file. Pass 'sql' with the "
+    "SQL text or 'files' with paths relative to the project root."
+)
+
+_DEBUG_SQL_DESCRIPTION = (
+    "Diagnose a database error: deterministic error-catalog matching "
+    "(PostgreSQL SQLSTATE codes and message patterns), schema/AST "
+    "cross-check of the failing SQL against the repo schema, and ranked "
+    "hypotheses with next diagnostics. When no catalog match is "
+    "conclusive AND an LLM API key is configured, an advisory is attached "
+    "(advisory-only, never a verdict). Use for database errors, failing "
+    "queries, SQLSTATE codes, deadlocks, timeouts, 'relation does not "
+    "exist', 'column does not exist', or connection issues. Pass 'error' "
+    "with the error message and optionally 'sql' with the failing query."
 )
 
 
@@ -250,6 +287,90 @@ def register_tools(
         result = await run_explain_query(
             sql, call_config, root_path, db_uri, lifecycle, cache,
             dialect=dialect,
+        )
+        if isinstance(result, FailureEnvelope):
+            return result.model_dump()
+        return result.model_dump()
+
+    @mcp.tool(name="design_schema", description=_DESIGN_SCHEMA_DESCRIPTION)
+    def design_schema(
+        requirements: str,
+        root: str | None = None,
+        dialect: str | None = None,
+        task: str | None = None,
+    ) -> dict[str, Any]:
+        """Design a schema from requirements: proposal, DDL, risks, ERD."""
+        counters.inc("tool_calls", 1)
+        logger.info("tool_call", tool="design_schema", dialect=dialect)
+
+        root_result = resolve_root(root, config)
+        if isinstance(root_result, FailureEnvelope):
+            return root_result.model_dump()
+
+        root_path: Path = root_result
+        call_config = load_config(root_path)
+        cache = get_cache(root_path, call_config)
+
+        result = run_design_schema(
+            call_config, root_path, cache=cache,
+            requirements=requirements, dialect=dialect, task=task,
+        )
+        if isinstance(result, FailureEnvelope):
+            return result.model_dump()
+        return result.model_dump()
+
+    @mcp.tool(name="refactor_sql", description=_REFACTOR_SQL_DESCRIPTION)
+    def refactor_sql(
+        root: str,
+        sql: str | None = None,
+        files: list[str] | None = None,
+        dialect: str | None = None,
+        task: str | None = None,
+    ) -> dict[str, Any]:
+        """Composed refactoring report: security + optimization + schema impact."""
+        counters.inc("tool_calls", 1)
+        logger.info("tool_call", tool="refactor_sql", dialect=dialect)
+
+        root_result = resolve_root(root, config)
+        if isinstance(root_result, FailureEnvelope):
+            return root_result.model_dump()
+
+        root_path: Path = root_result
+        call_config = load_config(root_path)
+        cache = get_cache(root_path, call_config)
+
+        result = run_refactor_sql(
+            call_config, root_path, cache=cache,
+            sql=sql, files=files, dialect=dialect, task=task,
+        )
+        if isinstance(result, FailureEnvelope):
+            return result.model_dump()
+        return result.model_dump()
+
+    @mcp.tool(name="debug_sql", description=_DEBUG_SQL_DESCRIPTION)
+    def debug_sql(
+        error: str,
+        root: str | None = None,
+        sql: str | None = None,
+        context: str | None = None,
+        dialect: str | None = None,
+        task: str | None = None,
+    ) -> dict[str, Any]:
+        """Diagnose a database error: catalog match + cross-check + hypotheses."""
+        counters.inc("tool_calls", 1)
+        logger.info("tool_call", tool="debug_sql", dialect=dialect)
+
+        root_result = resolve_root(root, config)
+        if isinstance(root_result, FailureEnvelope):
+            return root_result.model_dump()
+
+        root_path: Path = root_result
+        call_config = load_config(root_path)
+        cache = get_cache(root_path, call_config)
+
+        result = run_debug_sql(
+            call_config, root_path, cache=cache,
+            error=error, sql=sql, context=context, dialect=dialect, task=task,
         )
         if isinstance(result, FailureEnvelope):
             return result.model_dump()

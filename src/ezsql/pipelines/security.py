@@ -201,7 +201,8 @@ def run_sql_sec(
     Returns:
         ``SecurityScanResult`` on success, or ``FailureEnvelope`` on failure.
     """
-    counters.inc("tool_calls", 1)
+    # Note: tool invocation counters are owned by the server wrappers
+    # (plan_phase3 §11); the pipeline owns domain events only.
 
     resolved_dialect = dialect or config.default_dialect
 

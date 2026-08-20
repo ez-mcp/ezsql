@@ -1,10 +1,10 @@
 """Architecture invariant tests (plan §22.6).
 
 These tests enforce architectural constraints that prevent regressions:
-- No LLM in optimize/security pipelines
-- No DB in Phase 2 pipelines
+- No LLM in deterministic pipelines (llm only in design/debug)
+- No DB in static pipelines
 - Acyclic imports
-- Tool count is 4
+- Tool count is 8
 - Schema lossiness invariant
 """
 
@@ -37,13 +37,55 @@ def test_no_llm_in_security() -> None:
     assert "import ezsql.llm" not in source
 
 
+def test_no_llm_in_refactor() -> None:
+    """pipelines/refactor.py does not import ezsql.llm (plan_phase4 FR-3)."""
+    refactor_mod = sys.modules.get("ezsql.pipelines.refactor")
+    if refactor_mod is None:
+        refactor_mod = importlib.import_module("ezsql.pipelines.refactor")
+    with open(refactor_mod.__file__) as f:  # type: ignore[union-attr]
+        source = f.read()
+    assert "ezsql.llm" not in source
+    assert "from ezsql.llm" not in source
+    assert "import ezsql.llm" not in source
+
+
+def test_llm_only_in_design_and_debug() -> None:
+    """ezsql.llm is imported ONLY by design/debug pipelines (plan §9).
+
+    Positive control: the two escalating pipelines must reference
+    ezsql.llm; every other pipeline module must not.
+    """
+    escalating = ("design", "debug")
+    deterministic = ("analyze", "security", "optimize", "context", "refactor")
+
+    for name in escalating:
+        mod = sys.modules.get(f"ezsql.pipelines.{name}")
+        if mod is None:
+            mod = importlib.import_module(f"ezsql.pipelines.{name}")
+        with open(mod.__file__) as f:  # type: ignore[union-attr]
+            source = f.read()
+        assert "ezsql.llm" in source, f"{name} should import ezsql.llm"
+
+    for name in deterministic:
+        mod = sys.modules.get(f"ezsql.pipelines.{name}")
+        if mod is None:
+            mod = importlib.import_module(f"ezsql.pipelines.{name}")
+        with open(mod.__file__) as f:  # type: ignore[union-attr]
+            source = f.read()
+        assert "ezsql.llm" not in source, f"{name} imports ezsql.llm"
+
+
 def test_no_db_in_phase2() -> None:
     """Static pipelines do not import ezsql.db (plan_phase3 §9).
 
     The Phase 3 runtime pipelines (explain, optimize_runtime) are allowed
-    DB access; the static ones are not.
+    DB access; the static ones are not. Phase 4's design/refactor/debug
+    are static too (plan_phase4 FR-3).
     """
-    for pipeline_name in ("analyze", "security", "optimize", "context"):
+    for pipeline_name in (
+        "analyze", "security", "optimize", "context",
+        "design", "refactor", "debug",
+    ):
         mod = sys.modules.get(f"ezsql.pipelines.{pipeline_name}")
         if mod is None:
             mod = importlib.import_module(f"ezsql.pipelines.{pipeline_name}")
@@ -74,8 +116,8 @@ def test_acyclic_imports_core_no_pipelines() -> None:
         assert "ezsql.pipelines" not in source, f"{mod_name} imports ezsql.pipelines"
 
 
-def test_tool_count_is_5() -> None:
-    """Exactly 5 workflow tools registered via list_tools() (plan_phase3 §9)."""
+def test_tool_count_is_8() -> None:
+    """Exactly 8 workflow tools registered via list_tools() (plan_phase4 §FR-9)."""
     import asyncio
 
     from ezsql.server.app import create_server
@@ -88,9 +130,12 @@ def test_tool_count_is_5() -> None:
     tool_names = asyncio.run(_list_tools())
     assert tool_names == [
         "analyze_sql",
+        "debug_sql",
+        "design_schema",
         "explain_query",
         "find_context",
         "optimize_query",
+        "refactor_sql",
         "sql_sec",
     ]
 

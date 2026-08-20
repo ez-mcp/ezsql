@@ -1,3 +1,9 @@
+---
+name: explain-guide
+description: 'How to interpret PostgreSQL EXPLAIN plans: plan tree shape, estimated costs and row counts, planning time, and what runtime evidence means.'
+keywords: 'explain, plan, cost, rows, planner, postgres, seq scan, index scan, join strategy, estimate'
+---
+
 # Interpreting PostgreSQL EXPLAIN Plans
 
 ## What EXPLAIN gives you

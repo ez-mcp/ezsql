@@ -7,6 +7,7 @@ Static-only in Phase 2: no EXPLAIN, no runtime evidence. Findings carry
 is always ``None``.
 """
 
+import hashlib
 import logging
 
 from ezsql.cache.keys import optimize_key
@@ -24,6 +25,20 @@ from ezsql.server.models import (
 )
 
 logger = logging.getLogger("ezsql.pipelines.optimize")
+
+
+def _schema_hash(schema: SchemaModel | None) -> str | None:
+    """Compute a stable content hash of a schema model for cache keying.
+
+    Mirrors ``pipelines/analyze.py`` — same hash of the model's canonical
+    JSON dump so analyze and optimize keys vary identically with schema
+    content. ``None`` stays ``None`` (schema-less key shape unchanged).
+    """
+    if schema is None:
+        return None
+    return hashlib.blake2b(
+        schema.model_dump_json().encode("utf-8"), digest_size=16
+    ).hexdigest()
 
 
 def run_optimize_query(
@@ -61,7 +76,7 @@ def run_optimize_query(
         )
 
     resolved_dialect = dialect or config.default_dialect
-    schema_hash = None  # TODO: compute from schema
+    schema_hash = _schema_hash(schema)
 
     # Cache check
     key = optimize_key(sql, resolved_dialect, schema_hash)

@@ -5,3 +5,5 @@ plan_phase2.md
 
 plan_phase3.md
 
+__pycache__/
+*.pyc

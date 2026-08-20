@@ -271,19 +271,131 @@ class EscalationResult(BaseModel):
     status: Literal["ok", "unavailable", "failed", "budget_exhausted"] = "unavailable"
 
 
+class ProposedColumn(BaseModel):
+    """A proposed column in a design_schema proposal (plan_phase4 FR-2)."""
+
+    name: str
+    data_type: str
+    nullable: bool = True
+    rationale: str = ""
+
+
+class ProposedTable(BaseModel):
+    """A proposed table in a design_schema proposal (plan_phase4 FR-2)."""
+
+    name: str
+    columns: list[ProposedColumn] = Field(default_factory=list)
+    primary_key: list[str] = Field(default_factory=list)
+    foreign_keys: list[ForeignKeyDef] = Field(default_factory=list)
+    rationale: str = ""
+
+
+class DesignResult(BaseModel):
+    """design_schema result (plan §21, plan_phase4 FR-2).
+
+    The deterministic skeleton (proposal, DDL, risks, ERD) is cached;
+    the escalation advisory is advisory-only and never cached.
+    """
+
+    dialect: str = "unknown"
+    tables: list[ProposedTable] = Field(default_factory=list)
+    generated_ddl: list[str] = Field(default_factory=list)
+    migration_strategy: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    mermaid_erd: str | None = None
+    ddl_withheld_rule_ids: list[str] = Field(default_factory=list)
+    derivation_status: Literal["derived", "inconclusive"] = "derived"
+    schema_source: Literal["repo-ddl", "introspection", "none"] = "none"
+    tables_truncated: bool = False
+    tables_suppressed: int = 0
+    cache_provenance: CacheProvenance = Field(default_factory=CacheProvenance)
+    escalation: EscalationResult = Field(default_factory=EscalationResult)
+
+
+class SchemaImpact(BaseModel):
+    """Schema impact of a refactor target (plan_phase4 FR-3)."""
+
+    missing_tables: list[str] = Field(default_factory=list)
+    missing_columns: list[str] = Field(default_factory=list)
+    schema_source: Literal["repo-ddl", "introspection", "none"] = "none"
+
+
+class RefactorResult(BaseModel):
+    """refactor_sql composed result (plan §21, plan_phase4 FR-3).
+
+    Composed internally from security + optimization + schema impact —
+    never via MCP-call chaining (plan §5.1). Deterministic only.
+    """
+
+    dialect: str = "unknown"
+    security_findings: list[Finding] = Field(default_factory=list)
+    optimize_findings: list[Finding] = Field(default_factory=list)
+    candidates: list[RewriteCandidate] = Field(default_factory=list)
+    schema_impact: SchemaImpact = Field(default_factory=SchemaImpact)
+    proposed_changes: list[str] = Field(default_factory=list)
+    truncated: bool = False
+    suppressed_count: int = 0
+    candidates_truncated: bool = False
+    candidates_suppressed: int = 0
+    cache_provenance: CacheProvenance = Field(default_factory=CacheProvenance)
+
+
+class CatalogMatchModel(BaseModel):
+    """A deterministic error-catalog match (plan_phase4 FR-4)."""
+
+    catalog_id: str
+    diagnosis: str
+    fix_guidance: str
+    severity: Literal["critical", "high", "medium", "low", "info"]
+    specificity: int = 1
+
+
+class Hypothesis(BaseModel):
+    """A ranked debugging hypothesis (plan_phase4 FR-4)."""
+
+    rank: int
+    statement: str
+    basis: Literal["catalog", "schema", "ast", "inference"] = "inference"
+    next_diagnostics: list[str] = Field(default_factory=list)
+
+
+class DebugResult(BaseModel):
+    """debug_sql result (plan §21, plan_phase4 FR-4).
+
+    Deterministic catalog matches + schema/AST cross-check + ranked
+    hypotheses. Escalation advisory is advisory-only, never cached.
+    """
+
+    dialect: str = "unknown"
+    catalog_matches: list[CatalogMatchModel] = Field(default_factory=list)
+    hypotheses: list[Hypothesis] = Field(default_factory=list)
+    schema_cross_check: SchemaImpact = Field(default_factory=SchemaImpact)
+    next_diagnostics: list[str] = Field(default_factory=list)
+    catalog_matches_truncated: bool = False
+    catalog_matches_suppressed: int = 0
+    hypotheses_truncated: bool = False
+    hypotheses_suppressed: int = 0
+    cache_provenance: CacheProvenance = Field(default_factory=CacheProvenance)
+    escalation: EscalationResult = Field(default_factory=EscalationResult)
+
+
 # Re-export schema model types for convenience (they're canonical in
 # core/schema/model.py but consumers often import from server/models.py).
 __all__ = [
     "CacheProvenance",
+    "CatalogMatchModel",
     "ColumnDef",
     "ConstraintDef",
     "ContextFile",
     "ContextMap",
+    "DebugResult",
+    "DesignResult",
     "EscalationResult",
     "FailureEnvelope",
     "FileClassification",
     "Finding",
     "ForeignKeyDef",
+    "Hypothesis",
     "IndexDef",
     "OptimizeResult",
     "ParserWarning",
@@ -293,10 +405,14 @@ __all__ = [
     "PlanNode",
     "PlanSummary",
     "ExplainResult",
+    "ProposedColumn",
+    "ProposedTable",
+    "RefactorResult",
     "RewriteCandidate",
     "RuleCoverage",
     "ScanMetadata",
     "SchemaCapability",
+    "SchemaImpact",
     "SchemaModel",
     "SecurityScanResult",
     "SourceSpan",

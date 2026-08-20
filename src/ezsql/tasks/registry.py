@@ -25,7 +25,16 @@ from ezsql.server.models import ContextMap
 
 logger = logging.getLogger("ezsql.tasks")
 
-ArtifactType = Literal["context_map", "schema_model", "analysis", "security", "optimize"]
+ArtifactType = Literal[
+    "context_map",
+    "schema_model",
+    "analysis",
+    "security",
+    "optimize",
+    "design",
+    "refactor",
+    "debug",
+]
 
 
 class TaskRef(BaseModel):

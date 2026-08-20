@@ -23,6 +23,9 @@ _LINT_RULESET_VERSION = "1"  # OPT-001 through OPT-004
 _OPTIMIZATION_RULESET_VERSION = "1"  # Optimization heuristics
 _REWRITE_RULESET_VERSION = "1"  # Rewrite rules (SELECT * expansion)
 _RUNTIME_EVIDENCE_VERSION = "1"  # Phase 3 runtime evidence record shape
+_DESIGN_RULESET_VERSION = "1"  # Phase 4 design heuristics
+_DEBUG_CATALOG_VERSION = "1"  # Phase 4 error catalog entries
+_REFACTOR_COMPOSITION_VERSION = "1"  # Phase 4 refactor composition shape
 
 
 def _get_sqlglot_version() -> str:
@@ -243,10 +246,87 @@ def runtime_evidence_key(
     return _hash(parts)
 
 
+def design_key(
+    requirements: str,
+    dialect: str,
+    schema_fingerprint: str | None,
+) -> str:
+    """Build the cache key for a design_schema deterministic skeleton.
+
+    Inputs: requirements hash, dialect, repo-schema fingerprint,
+    design ruleset version, schema model version, sqlglot version.
+    The escalation advisory is never part of the cached value.
+    """
+    parts: dict[str, Any] = {
+        "domain": "design",
+        "requirements_hash": _hash_sql(requirements),
+        "dialect": dialect,
+        "schema_fingerprint": schema_fingerprint or "",
+        "design_ruleset_version": _DESIGN_RULESET_VERSION,
+        "schema_model_version": SCHEMA_MODEL_VERSION,
+        "sqlglot_version": _get_sqlglot_version(),
+    }
+    return _hash(parts)
+
+
+def refactor_key(
+    target_content: str,
+    dialect: str,
+    schema_fingerprint: str | None,
+) -> str:
+    """Build the cache key for a refactor_sql composed result.
+
+    Inputs: target content hash, dialect, repo-schema fingerprint, and
+    the versions of every composed ruleset (security + optimization +
+    lint + rewrite + schema model) so any composed-rule change
+    invalidates refactor caches too.
+    """
+    parts: dict[str, Any] = {
+        "domain": "refactor",
+        "target_hash": _hash_sql(target_content),
+        "dialect": dialect,
+        "schema_fingerprint": schema_fingerprint or "",
+        "security_ruleset_version": SECURITY_RULESET_VERSION,
+        "optimization_ruleset_version": _OPTIMIZATION_RULESET_VERSION,
+        "lint_ruleset_version": _LINT_RULESET_VERSION,
+        "rewrite_ruleset_version": _REWRITE_RULESET_VERSION,
+        "schema_model_version": SCHEMA_MODEL_VERSION,
+        "refactor_composition_version": _REFACTOR_COMPOSITION_VERSION,
+        "sqlglot_version": _get_sqlglot_version(),
+    }
+    return _hash(parts)
+
+
+def debug_key(
+    error_text: str,
+    sql: str | None,
+    dialect: str,
+) -> str:
+    """Build the cache key for a debug_sql deterministic skeleton.
+
+    Inputs: error-text hash, optional SQL hash, dialect, debug catalog
+    version, schema model version, sqlglot version. The escalation
+    advisory is never part of the cached value.
+    """
+    parts: dict[str, Any] = {
+        "domain": "debug",
+        "error_hash": _hash_sql(error_text),
+        "sql_hash": _hash_sql(sql) if sql is not None else "",
+        "dialect": dialect,
+        "debug_catalog_version": _DEBUG_CATALOG_VERSION,
+        "schema_model_version": SCHEMA_MODEL_VERSION,
+        "sqlglot_version": _get_sqlglot_version(),
+    }
+    return _hash(parts)
+
+
 __all__ = [
     "analysis_key",
+    "debug_key",
+    "design_key",
     "explain_key",
     "optimize_key",
+    "refactor_key",
     "runtime_evidence_key",
     "scan_key",
     "schema_key",

@@ -7,6 +7,7 @@ The pipeline is impure (orchestration + I/O + cache). Core services are
 pure. The pipeline owns cache orchestration (plan §7.2).
 """
 
+import hashlib
 import logging
 
 from sqlglot import exp
@@ -25,6 +26,21 @@ from ezsql.server.models import (
 )
 
 logger = logging.getLogger("ezsql.pipelines.analyze")
+
+
+def _schema_hash(schema: SchemaModel | None) -> str | None:
+    """Compute a stable content hash of a schema model for cache keying.
+
+    ``None`` (no schema) stays ``None`` so the cache key shape is
+    unchanged for schema-less calls. The hash covers the model's
+    canonical JSON dump, so any table/column/constraint change yields a
+    new key (stale-by-construction is impossible, plan §14).
+    """
+    if schema is None:
+        return None
+    return hashlib.blake2b(
+        schema.model_dump_json().encode("utf-8"), digest_size=16
+    ).hexdigest()
 
 
 def _extract_ast_facts(
@@ -123,7 +139,8 @@ def run_analyze_sql(
     Returns:
         ``SqlAnalysis`` on success, or ``FailureEnvelope`` on failure.
     """
-    counters.inc("tool_calls", 1)
+    # Note: tool invocation counters are owned by the server wrappers
+    # (plan_phase3 §11); the pipeline owns domain events only.
 
     # Input size check (plan §11.1)
     if len(sql.encode("utf-8")) > config.max_sql_input_bytes:
@@ -135,7 +152,7 @@ def run_analyze_sql(
         )
 
     resolved_dialect = dialect or config.default_dialect
-    schema_hash = None  # TODO: compute from schema when available
+    schema_hash = _schema_hash(schema)
 
     # Cache check
     key = analysis_key(sql, resolved_dialect, schema_hash)

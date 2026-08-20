@@ -67,6 +67,19 @@ _CLAMP_RANGES: dict[str, tuple[int, int]] = {
     "max_schema_files": (1, 10_000),
     "max_schema_file_bytes": (1024, 16_777_216),
     "max_schema_total_bytes": (1024, 64 * 1024 * 1024),
+    # Phase 4 limits (plan_phase4 §FR-1, FR-10)
+    "llm_token_budget": (256, 1_000_000),
+    "llm_timeout_seconds": (5, 120),
+    "max_advisory_chars": (256, 65_536),
+    "max_requirements_bytes": (1024, 4_194_304),
+    "max_error_input_bytes": (64, 1_048_576),
+    "max_context_input_bytes": (64, 1_048_576),
+    "max_design_tables": (1, 500),
+    "max_design_columns": (1, 5_000),
+    "max_hypotheses": (1, 100),
+    "max_catalog_matches": (1, 50),
+    "max_doc_sections": (1, 100),
+    "max_doc_section_chars": (256, 65_536),
 }
 
 
@@ -84,9 +97,29 @@ class EzsqlConfig(BaseModel):
     default_dialect: str = "postgres"
     database_url_env: str = "DATABASE_URL"
 
-    # LLM escalation (Phase 4; stored but unused in Phase 1).
+    # LLM escalation (Phase 4; plan §9 — design/debug pipelines only).
     llm_api_key_env: str = "OPENAI_API_KEY"
     llm_token_budget: int = 4000
+    # LiteLLM model string ("provider/model" format). Default is a cheap,
+    # widely available model; users override via config.toml. Escalation
+    # is off unless the env var named by ``llm_api_key_env`` is set.
+    llm_model: str = "openai/gpt-4o-mini"
+    llm_timeout_seconds: int = 30
+    # Phase 4: escalation advisory output bound (untrusted LLM output).
+    max_advisory_chars: int = 8_192
+
+    # Phase 4: pipeline input limits (plan_phase4 FR-2/FR-4)
+    max_requirements_bytes: int = 262_144  # 256 KiB
+    max_error_input_bytes: int = 65_536  # 64 KiB
+    max_context_input_bytes: int = 65_536  # 64 KiB
+
+    # Phase 4: output bounding (plan_phase4 NFR-3)
+    max_design_tables: int = 100
+    max_design_columns: int = 1_000
+    max_hypotheses: int = 20
+    max_catalog_matches: int = 10
+    max_doc_sections: int = 20
+    max_doc_section_chars: int = 8_192
 
     # Write gate (post-v1; ignored in Phase 1).
     allow_writes: bool = False
@@ -187,7 +220,11 @@ class EzsqlConfig(BaseModel):
                      "explain_ttl_seconds", "max_explain_candidates",
                      "explain_statement_timeout_seconds", "explain_lock_timeout_seconds",
                      "explain_total_timeout_seconds", "runtime_enrichment_timeout_seconds",
-                     "max_schema_files", "max_schema_file_bytes", "max_schema_total_bytes")
+                     "max_schema_files", "max_schema_file_bytes", "max_schema_total_bytes",
+                     "llm_token_budget", "llm_timeout_seconds", "max_advisory_chars",
+                     "max_requirements_bytes", "max_error_input_bytes", "max_context_input_bytes",
+                     "max_design_tables", "max_design_columns", "max_hypotheses",
+                     "max_catalog_matches", "max_doc_sections", "max_doc_section_chars")
     @classmethod
     def _clamp_numeric(cls, v: int, info: Any) -> int:
         """Clamp numeric fields to valid ranges (T4.3)."""
